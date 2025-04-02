@@ -1,146 +1,285 @@
-const cartContainer = document.getElementById("cart-container");
-const productsContainer = document.getElementById("products-container");
-const dessertCards = document.getElementById("dessert-card-container");
-const cartBtn = document.getElementById("cart-btn");
-const clearCartBtn = document.getElementById("clear-cart-btn");
-const totalNumberOfItems = document.getElementById("total-items");
-const cartSubTotal = document.getElementById("subtotal");
-const cartTaxes = document.getElementById("taxes");
-const cartTotal = document.getElementById("total");
-const showHideCartSpan = document.getElementById("show-hide-cart");
-let isCartShowing = false;
+const startBtn = document.getElementById("start-btn");
+const canvas = document.getElementById("canvas");
+const startScreen = document.querySelector(".start-screen");
+const checkpointScreen = document.querySelector(".checkpoint-screen");
+const checkpointMessage = document.querySelector(".checkpoint-screen > p");
+const ctx = canvas.getContext("2d");
+canvas.width = innerWidth;
+canvas.height = innerHeight;
+const gravity = 0.5;
+let isCheckpointCollisionDetectionActive = true;
 
-const products = [
-  {
-    id: 1,
-    name: "ARK DLC ",
-    price: 36.99,
-    category: "PS4",
-  },
-  {
-    id: 2,
-    name: "Minecraft",
-    price: 29.99,
-    category: "Desktop",
-  },
-  {
-    id: 3,
-    name: "GTA6",
-    price: 33.99,
-    category: "Ps5",
-  },
-  {
-    id: 4,
-    name: "Dead By Daylight",
-    price: 24.99,
-    category: "Desktop",
-  },
-];
+const proportionalSize = (size) => {
+  return innerHeight < 500 ? Math.ceil((size / 500) * innerHeight) : size;
+}
 
-products.forEach(
-  ({ name, id, price, category }) => {
-    dessertCards.innerHTML += `
-      <div class="dessert-card">
-        <h2>${name}</h2>
-        <p class="dessert-price">$${price}</p>
-        <p class="product-category">Category: ${category}</p>
-        <button 
-          id="${id}" 
-          class="btn add-to-cart-btn">Add to cart
-        </button>
-      </div>
-    `;
-  }
-);
-
-class ShoppingCart {
+class Player {
   constructor() {
-    this.items = [];
-    this.total = 0;
-    this.taxRate = 8.25;
+    this.position = {
+      x: proportionalSize(10),
+      y: proportionalSize(400),
+    };
+    this.velocity = {
+      x: 0,
+      y: 0,
+    };
+    this.width = proportionalSize(40);
+    this.height = proportionalSize(40);
   }
-
-  addItem(id, products) {
-    const product = products.find((item) => item.id === id);
-    const { name, price } = product;
-    this.items.push(product);
-
-    const totalCountPerProduct = {};
-    this.items.forEach((dessert) => {
-      totalCountPerProduct[dessert.id] = (totalCountPerProduct[dessert.id] || 0) + 1;
-    })
-
-    const currentProductCount = totalCountPerProduct[product.id];
-    const currentProductCountSpan = document.getElementById(`product-count-for-id${id}`);
-
-    currentProductCount > 1 
-      ? currentProductCountSpan.textContent = `${currentProductCount}x`
-      : productsContainer.innerHTML += `
-      <div id="dessert${id}" class="product">
-        <p>
-          <span class="product-count" id="product-count-for-id${id}"></span>${name}
-        </p>
-        <p>${price}</p>
-      </div>
-      `;
+  draw() {
+    ctx.fillStyle = "#99c9ff";
+    ctx.fillRect(this.position.x, this.position.y, this.width, this.height);
   }
+  
+  update() {
+    this.draw();
+    this.position.x += this.velocity.x;
+    this.position.y += this.velocity.y;
 
-  getCounts() {
-    return this.items.length;
-  }
-
-  clearCart() {
-    if (!this.items.length) {
-      alert("Your shopping cart is already empty");
-      return;
+    if (this.position.y + this.height + this.velocity.y <= canvas.height) {
+      if (this.position.y < 0) {
+        this.position.y = 0;
+        this.velocity.y = gravity;
+      }
+      this.velocity.y += gravity;
+    } else {
+      this.velocity.y = 0;
     }
 
-    const isCartCleared = confirm(
-      "Are you sure you want to clear all items from your shopping cart?"
-    );
+    if (this.position.x < this.width) {
+      this.position.x = this.width;
+    }
 
-    if (isCartCleared) {
-      this.items = [];
-      this.total = 0;
-      productsContainer.innerHTML = "";
-      totalNumberOfItems.textContent = 0;
-      cartSubTotal.textContent = 0;
-      cartTaxes.textContent = 0;
-      cartTotal.textContent = 0;
+    if (this.position.x >= canvas.width - this.width * 2) {
+      this.position.x = canvas.width - this.width * 2;
     }
   }
+}
 
-  calculateTaxes(amount) {
-    return parseFloat(((this.taxRate / 100) * amount).toFixed(2));
+class Platform {
+  constructor(x, y) {
+    this.position = {
+      x,
+      y,
+    };
+    this.width = 200;
+    this.height = proportionalSize(40);
   }
+  draw() {
+    ctx.fillStyle = "#acd157";
+    ctx.fillRect(this.position.x, this.position.y, this.width, this.height);
+  }
+}
 
-  calculateTotal() {
-    const subTotal = this.items.reduce((total, item) => total + item.price, 0);
-    const tax = this.calculateTaxes(subTotal);
-    this.total = subTotal + tax;
-    cartSubTotal.textContent = `$${subTotal.toFixed(2)}`;
-    cartTaxes.textContent = `$${tax.toFixed(2)}`;
-    cartTotal.textContent = `$${this.total.toFixed(2)}`;
-    return this.total;
+class CheckPoint {
+  constructor(x, y, z) {
+    this.position = {
+      x,
+      y,
+    };
+    this.width = proportionalSize(40);
+    this.height = proportionalSize(70);
+    this.claimed = false;
+  };
+
+  draw() {
+    ctx.fillStyle = "#f1be32";
+    ctx.fillRect(this.position.x, this.position.y, this.width, this.height);
+  }
+  claim() {
+    this.width = 0;
+    this.height = 0;
+    this.position.y = Infinity;
+    this.claimed = true;
   }
 };
 
-const cart = new ShoppingCart();
-const addToCartBtns = document.getElementsByClassName("add-to-cart-btn");
+const player = new Player();
 
-[...addToCartBtns].forEach(
-  (btn) => {
-    btn.addEventListener("click", (event) => {
-      cart.addItem(Number(event.target.id), products);
-      totalNumberOfItems.textContent = cart.getCounts();
-      cart.calculateTotal();
-    })
-  }
+const platformPositions = [
+  { x: 500, y: proportionalSize(450) },
+  { x: 700, y: proportionalSize(400) },
+  { x: 850, y: proportionalSize(350) },
+  { x: 900, y: proportionalSize(350) },
+  { x: 1050, y: proportionalSize(150) },
+  { x: 2500, y: proportionalSize(450) },
+  { x: 2900, y: proportionalSize(400) },
+  { x: 3150, y: proportionalSize(350) },
+  { x: 3900, y: proportionalSize(450) },
+  { x: 4200, y: proportionalSize(400) },
+  { x: 4400, y: proportionalSize(200) },
+  { x: 4700, y: proportionalSize(150) },
+];
+
+const platforms = platformPositions.map(
+  (platform) => new Platform(platform.x, platform.y)
 );
 
-cartBtn.addEventListener("click", () => {
-  isCartShowing = !isCartShowing;
-  showHideCartSpan.textContent = isCartShowing ? "Hide" : "Show";
-  cartContainer.style.display = isCartShowing ? "block" : "none";
+const checkpointPositions = [
+  { x: 1170, y: proportionalSize(80), z: 1 },
+  { x: 2900, y: proportionalSize(330), z: 2 },
+  { x: 4800, y: proportionalSize(80), z: 3 },
+];
+
+const checkpoints = checkpointPositions.map(
+  (checkpoint) => new CheckPoint(checkpoint.x, checkpoint.y, checkpoint.z)
+);
+
+const animate = () => {
+  requestAnimationFrame(animate);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  platforms.forEach((platform) => {
+    platform.draw();
+  });
+
+  checkpoints.forEach(checkpoint => {
+    checkpoint.draw();
+  });
+
+  player.update();
+
+  if (keys.rightKey.pressed && player.position.x < proportionalSize(400)) {
+    player.velocity.x = 5;
+  } else if (keys.leftKey.pressed && player.position.x > proportionalSize(100)) {
+    player.velocity.x = -5;
+  } else {
+    player.velocity.x = 0;
+
+    if (keys.rightKey.pressed && isCheckpointCollisionDetectionActive) {
+      platforms.forEach((platform) => {
+        platform.position.x -= 5;
+      });
+
+      checkpoints.forEach((checkpoint) => {
+        checkpoint.position.x -= 5;
+      });
+    
+    } else if (keys.leftKey.pressed && isCheckpointCollisionDetectionActive) {
+      platforms.forEach((platform) => {
+        platform.position.x += 5;
+      });
+
+      checkpoints.forEach((checkpoint) => {
+        checkpoint.position.x += 5;
+      });
+    }
+  }
+
+  platforms.forEach((platform) => {
+    const collisionDetectionRules = [
+      player.position.y + player.height <= platform.position.y,
+      player.position.y + player.height + player.velocity.y >= platform.position.y,
+      player.position.x >= platform.position.x - player.width / 2,
+      player.position.x <=
+        platform.position.x + platform.width - player.width / 3,
+    ];
+
+    if (collisionDetectionRules.every((rule) => rule)) {
+      player.velocity.y = 0;
+      return;
+    }
+
+    const platformDetectionRules = [
+      player.position.x >= platform.position.x - player.width / 2,
+      player.position.x <=
+        platform.position.x + platform.width - player.width / 3,
+      player.position.y + player.height >= platform.position.y,
+      player.position.y <= platform.position.y + platform.height,
+    ];
+
+    if (platformDetectionRules.every(rule => rule)) {
+      player.position.y = platform.position.y + player.height;
+      player.velocity.y = gravity;
+    };
+  });
+
+  checkpoints.forEach((checkpoint, index, checkpoints) => {
+    const checkpointDetectionRules = [
+      player.position.x >= checkpoint.position.x,
+      player.position.y >= checkpoint.position.y,
+      player.position.y + player.height <=
+        checkpoint.position.y + checkpoint.height,
+      isCheckpointCollisionDetectionActive,
+      player.position.x - player.width <=
+        checkpoint.position.x - checkpoint.width + player.width * 0.9,
+      index === 0 || checkpoints[index - 1].claimed === true,
+    ];
+
+    if (checkpointDetectionRules.every((rule) => rule)) {
+      checkpoint.claim();
+
+
+      if (index === checkpoints.length - 1) {
+        isCheckpointCollisionDetectionActive = false;
+        showCheckpointScreen("You reached the final checkpoint!");
+        movePlayer("ArrowRight", 0, false);
+      }
+
+
+    };
+  });
+}
+
+
+const keys = {
+  rightKey: {
+    pressed: false
+  },
+  leftKey: {
+    pressed: false
+  }
+};
+
+const movePlayer = (key, xVelocity, isPressed) => {
+  if (!isCheckpointCollisionDetectionActive) {
+    player.velocity.x = 0;
+    player.velocity.y = 0;
+    return;
+  }
+
+  switch (key) {
+    case "ArrowLeft":
+      keys.leftKey.pressed = isPressed;
+      if (xVelocity === 0) {
+        player.velocity.x = xVelocity;
+      }
+      player.velocity.x -= xVelocity;
+      break;
+    case "ArrowUp":
+    case " ":
+    case "Spacebar":
+      player.velocity.y -= 8;
+      break;
+    case "ArrowRight":
+      keys.rightKey.pressed = isPressed;
+      if (xVelocity === 0) {
+        player.velocity.x = xVelocity;
+      }
+      player.velocity.x += xVelocity;
+  }
+}
+
+const startGame = () => {
+  canvas.style.display = "block";
+  startScreen.style.display = "none";
+  animate();
+}
+
+const showCheckpointScreen = (msg) => {
+  checkpointScreen.style.display = "block";
+  checkpointMessage.textContent = msg;
+  if (isCheckpointCollisionDetectionActive) {
+    setTimeout(() => (checkpointScreen.style.display = "none"), 2000);
+  }
+};
+
+startBtn.addEventListener("click", startGame);
+
+window.addEventListener("keydown", ({ key }) => {
+  movePlayer(key, 8, true);
 });
 
+window.addEventListener("keyup", ({ key }) => {
+  movePlayer(key, 0, false);
+});
